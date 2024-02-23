@@ -1,0 +1,447 @@
+---
+title: "Covid 19 vaccinations"
+output:
+  flexdashboard::flex_dashboard:
+    fig_keep: high
+    cache_keep: high
+---
+
+```{r}
+options(repos = "https://cran.rstudio.com/")
+
+
+```
+
+
+```{r}
+install.packages("Rtools")
+install.packages("readxl")
+library("readxl")
+```
+
+```{r Working directory}
+
+getwd()
+
+```
+
+
+
+```{r}
+library(readxl)
+
+pfizer <- "datasets//pfizer.xlsx"
+pfizer <- read_excel(pfizer)
+
+Moderna<- "datasets//moderna.xlsx"
+Moderna<- read_excel(Moderna)
+
+janssen <- "datasets//janssen.xlsx"
+janssen <- read_excel(janssen)
+
+
+```
+
+
+
+```{r}
+
+install.packages("tidyverse")
+install.packages("dplyr")
+library(tidyverse)
+library(dplyr)
+```
+
+
+
+```{r}
+install.packages("devtools")
+library(devtools)
+devtools::install_github('FIRST-Data-Lab/IDDA', force = TRUE)
+```
+
+# creating variables from Datasets
+```{r}
+State <- pfizer$Jurisdiction
+Date <- pfizer$Week.of.Allocations
+Pfizer.1st.Dose.Allocations <- pfizer$X1st.Dose.Allocations 
+Pfizer.2nd.Dose.Allocations <- pfizer$X2nd.Dose.Allocations 
+Moderna.1st.Dose.Allocations <- Moderna$X1st.Dose.Allocations
+Moderna.2nd.Dose.Allocations <- Moderna$X2nd.Dose.Allocations 
+Janssen.1st.Dose.Allocations <- janssen$X1st.Dose.Allocations 
+All.Dose.Allocations <- 0.5 *(Pfizer.2nd.Dose.Allocations+Pfizer.1st.Dose.Allocations+Moderna.1st.Dose.Allocations + Moderna.2nd.Dose.Allocations)+Janssen.1st.Dose.Allocations
+Cum.Allocation <-cumsum(All.Dose.Allocations)
+
+```
+
+
+#1.Data Exploration.
+
+# find out the maximum length column, inorder to create a dataframe with equal number of records. As we know different vaccine datasets has different number of records.
+
+```{r}
+max_length <- max(c(length(Janssen.1st.Dose.Allocations),length(Moderna.1st.Dose.Allocations),length(Moderna.2nd.Dose.Allocations),length(Pfizer.1st.Dose.Allocations),length(Pfizer.2nd.Dose.Allocations)))
+max_length
+```
+
+
+```{r}
+lengths_vector <- c(length(Janssen.1st.Dose.Allocations), length(Moderna.1st.Dose.Allocations), length(Moderna.2nd.Dose.Allocations), length(Pfizer.1st.Dose.Allocations), length(Pfizer.2nd.Dose.Allocations))
+
+if (length(lengths_vector) > 0) {
+  max_length <- max(lengths_vector)
+} else {
+  # Handle the case where all vectors have length zero
+  max_length <- 0
+}
+
+
+```
+
+
+#creating a dummy vaccine_dataframe
+```{r}
+df_vaccine <- data.frame(
+  Janssen.1st.Dose.Allocations = c(Janssen.1st.Dose.Allocations, rep(NA, max_length - length(Janssen.1st.Dose.Allocations))),
+  Moderna.1st.Dose.Allocations = c(Moderna.1st.Dose.Allocations, rep(NA, max_length - length(Moderna.1st.Dose.Allocations))),
+  Moderna.2nd.Dose.Allocations = c(Moderna.2nd.Dose.Allocations, rep(NA, max_length - length(Moderna.2nd.Dose.Allocations))),
+  Pfizer.1st.Dose.Allocations = c(Pfizer.1st.Dose.Allocations, rep(NA, max_length - length(Pfizer.1st.Dose.Allocations))),
+  Pfizer.2nd.Dose.Allocations = c(Pfizer.2nd.Dose.Allocations, rep(NA, max_length - length(Pfizer.2nd.Dose.Allocations))),
+  State = c(State, rep(NA, max_length - length(State))),
+  Date = c(Date, rep(NA, max_length - length(Date))),
+  All.Dose.Allocations = c(All.Dose.Allocations, rep(NA, max_length - length(All.Dose.Allocations))),
+  Cum.Allocation = c(Cum.Allocation, rep(NA, max_length - length(Cum.Allocation)))
+)
+
+```
+
+
+
+```{r}
+
+str(df_vaccine)
+
+```
+
+
+
+```{r}
+population_data <- IDDA::pop.state
+
+```
+
+
+```{r}
+population_data  <- population_data%>% rename_at('State', ~'name')
+
+```
+
+
+
+# removing the space from state column
+```{r}
+df_vaccine <- df_vaccine%>%
+  mutate(name = sapply(State, gsub, pattern = " ", 
+replacement = ""))
+
+```
+
+
+
+
+#creating a left_join using Dplyr
+```{r}
+
+df<- left_join(df_vaccine,population_data, by="name")
+
+```
+
+
+
+
+#creating Doseperpop Variable using Mutate
+
+```{r}
+library(dplyr)
+df <- mutate(df, Doseperpop=Cum.Allocation/df$population)
+
+```
+#Making sure to drop all the NA values
+
+
+```{r}
+
+
+df <- df[!(df$State=="American Samoa" | df$State=="Palau" | df$State == "Guam" | df$State == "Mariana Islands" | df$State == "Marshall Islands" | df$State == "PuertoRico" | df$State == "Philadelphia" | df$State == "New York City" |df$State == "Puerto Rico" |df$State == "U.S. Virgin Islands" | df$State == "Chicago" |df$State == "Federal Entities" | df$State == "Micronesia"),] 
+
+```
+
+
+```{r}
+str(df)
+```
+
+
+
+#2.Visualization
+
+```{r}
+install.packages("plotly")
+library(plotly)
+plot1 <- plot_ly() %>%
+
+ add_trace(data = df %>%
+              filter(State == 'Virginia'),x = ~Date , y = ~Janssen.1st.Dose.Allocations, type = 'scatter', mode = 'lines+markers',showlegend = TRUE, name = 'Janssen Dose') %>%
+  
+   add_trace(data = df %>%
+               
+               filter(State == 'Virginia'),x = ~Date , y = ~Pfizer.2nd.Dose.Allocations, type = 'scatter', mode = 'lines+markers',showlegend = TRUE, name = 'Pfizer 2nd dose')%>%
+
+  add_trace(data = df %>%
+               filter(State == 'Virginia'),x = ~Date , y = ~Pfizer.1st.Dose.Allocations, type = 'scatter', mode = 'lines+markers',showlegend = TRUE, name = 'Pfizer 1st dose')%>%
+
+  add_trace(data = df %>%
+               filter(State == 'Virginia'),x = ~Date , y = ~Moderna.2nd.Dose.Allocations, type = 'scatter', mode ='lines+markers',showlegend = TRUE, name = 'Moderna 2nd dose')%>%
+
+  add_trace(data = df %>%
+               filter(State == 'Virginia'),x = ~Date , y = ~Moderna.1st.Dose.Allocations, type = 'scatter', mode ='lines+markers',showlegend = TRUE, name = 'Moderna 1st dose')%>%
+  layout(
+    title = 'Vaccine Allocations from various providers for Viginia',
+    xaxis = list(title = 'Date'),
+    yaxis = list(title = 'doses allocated')
+  )
+
+
+library(htmlwidgets)
+saveWidget(plot1, "Figure1.html", selfcontained = F)
+plot1
+
+
+```
+
+
+
+# (b)
+```{r}
+plot2 <- plot_ly() %>%
+
+add_trace(data = df %>%
+filter(State == "Virginia"),
+x = ~Date, y = ~Doseperpop, type = 'scatter', mode = 'lines+markers',
+showlegend = TRUE, name = 'Virginia dosage allocation over-time' ) %>%
+  layout(
+    title = 'Vaccine Allocations in Virginia',
+    xaxis = list(title = 'Date'),
+    yaxis = list(title = 'Number of doses allocated')
+  )
+  
+
+saveWidget(plot2, "Figure2.html", selfcontained = F)
+plot2
+```
+#Figure 2
+
+
+
+#3 District of columbia (D.C) cumulative vacccine allocations;
+
+```{r}
+p5 <- plot_ly() %>%
+  add_trace(data = df %>%
+              filter(State == "District of Columbia"),x = ~Date, y =
+              ~Cum.Allocation, type = 'scatter', mode = 'lines+markers',
+            showlegend = TRUE, name = 'D.C cumulative allocations'
+            ) %>%
+  layout(
+    title = 'Vaccine Allocations in District of Columbia',
+    xaxis = list(title = 'Date'),
+    yaxis = list(title = 'Number of doses allocated')
+  )
+  
+p5
+```
+
+
+
+```{r}
+
+bar_data <- df[, c("State", "Janssen.1st.Dose.Allocations", "Moderna.1st.Dose.Allocations", "Moderna.2nd.Dose.Allocations", "Pfizer.1st.Dose.Allocations", "Pfizer.2nd.Dose.Allocations")]
+
+state_bar_plot <-plot_ly(bar_data, x = ~State, y = ~Janssen.1st.Dose.Allocations, type = 'bar', name = 'Janssen 1st Dose') %>%
+  add_trace(y = ~Moderna.1st.Dose.Allocations, name = 'Moderna 1st Dose') %>%
+  add_trace(y = ~Moderna.2nd.Dose.Allocations, name = 'Moderna 2nd Dose') %>%
+  add_trace(y = ~Pfizer.1st.Dose.Allocations, name = 'Pfizer 1st Dose') %>%
+  add_trace(y = ~Pfizer.2nd.Dose.Allocations, name = 'Pfizer 2nd Dose') %>%
+  layout(title = 'Total Vaccine Allocations by State',
+         xaxis = list(title = 'State'),
+         yaxis = list(title = 'Total Allocations'),
+         barmode = 'stack')
+
+
+saveWidget(state_bar_plot, "state_bar_plot.html", selfcontained = F)
+
+state_bar_plot
+
+```
+
+
+#allocation of vaccine vs population plot
+```{r}
+
+avp_plot <- plot_ly(df, x = ~population, y = ~All.Dose.Allocations, text = ~State, mode = 'markers', type = 'scatter', marker = list(size = 10)) %>%
+  layout(title = 'Scatter Plot: Population vs. Vaccine Allocations',
+         xaxis = list(title = 'Population'),
+         yaxis = list(title = 'Vaccine Allocations'))
+
+# Display the plot
+avp_plot
+
+saveWidget(avp_plot, "avp_.html", selfcontained = F)
+
+```
+
+
+```{r}
+pie_plot <- plot_ly(df, labels = ~State, values = ~Doseperpop, type = 'pie', hole = 0.4) %>%
+  layout(title = 'Proportion of Doses Allocated per Population',
+         showlegend = TRUE)
+
+# Display the plot
+pie_plot
+saveWidget(pie_plot, "pie_plot.html", selfcontained = F)
+
+```
+
+
+```{r}
+library(plotly)
+Cum_alloc_plot <- plot_ly(df, x = ~Date, y = ~Cum.Allocation, type = 'scatter', mode = 'lines', line = list(shape = "linear")) %>%
+  layout(title = 'Cumulative Vaccine Allocations Over Time',
+         xaxis = list(title = 'Date'),
+         yaxis = list(title = 'Cumulative Allocations'))
+
+# Display the plot
+Cum_alloc_plot
+saveWidget(Cum_alloc_plot, "Cum_alloc_plot.html", selfcontained = F)
+
+```
+
+
+
+#map(d)
+```{r}
+install.packages("sp")
+install.packages("sf")
+install.packages("leaflet")
+install.packages("geojsonio")
+devtools::install_github("rstudio/leaflet")
+
+
+```
+
+
+
+```{r}
+library(geojsonio); library(leaflet); library(dplyr); library(sp); library(sf)
+
+```
+
+
+
+```{r}
+library(geojsonio)
+states <- geojsonio::geojson_read("https://rstudio.github.io/leaflet/json/us-states.geojson", what = "sp")
+class(states)
+```
+
+
+
+## Merging a spatial and non spatial dataframe using sp::merge 
+
+```{r}
+states <- sp::merge(states, df, by="name", duplicateGeoms = T)
+
+```
+
+
+
+
+```{r}
+
+m <- leaflet(states) %>%
+  setView(-96, 37.8, 4) %>%
+  addProviderTiles("MapBox", options = providerTileOptions(
+    id = "mapbox.light",
+    accessToken = Sys.getenv('MAPBOX_ACCESS_TOKEN')))
+
+
+```
+
+
+
+```{r}
+bins <- c(-10, 20, 50, 80, 140, 200)
+pal <- colorBin("YlOrRd", domain = states$Doseperpop, bins = bins)
+
+```
+
+
+```{r}
+labels_cases <- sprintf("<strong>%s</strong><br/>Population: %g M<br>
+  Dosage per population: %g<br>
+  All dose allocation: %g",
+  states$name, round(states$population / (1e6), 2),
+  states$Doseperpop, states$All.Dose.Allocations) %>%
+ lapply(htmltools::HTML)
+labels_cases[[1]]
+```
+
+
+
+```{r}
+m <- m %>% addPolygons(
+  fillColor = ~pal(states$Doseperpop),
+  weight = 2,
+  opacity = 1,
+  color = "white",
+  dashArray = "3",
+  fillOpacity = 0.7,
+  highlightOptions = highlightOptions(
+    weight = 5,
+    color = "#666",
+    dashArray = "",
+    fillOpacity = 0.7,
+    bringToFront = TRUE),
+  label = labels_cases,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))
+
+
+
+
+```
+
+
+```{r}
+
+m <- m %>% addLegend(pal = pal, values = states$Doseperpop, 
+            opacity = 0.7, title = "Dosage per population",
+            position = "bottomright")
+
+m
+```
+#A high Dosageperpop value indicates that particular state performed poorly in allocating the vaccine doses for it's communities.
+
+
+Figure 4
+```{r}
+library(htmltools)
+library(htmlwidgets)
+saveWidget(m, file="m.html", selfcontained = T)
+```
+
+
+
+
